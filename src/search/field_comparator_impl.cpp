@@ -529,6 +529,13 @@ Result<std::unique_ptr<FieldComparator>> comparator_for(const SortField &sort_fi
             return std::unique_ptr<FieldComparator>(new DocValuesFieldComparator(
                     sort_field.field().value(), sort_field.type(), sort_field.reverse(), num_hits,
                     sort_field.selector()));
+        case SortFieldType::kCustom: {
+            const auto &factory = sort_field.custom_comparator_factory();
+            if (!factory) {
+                return err(LuceneError::illegal_argument("the custom sort field has no comparator factory"));
+            }
+            return factory(num_hits);
+        }
     }
     return err(LuceneError::illegal_argument("unknown sort field type"));
 }

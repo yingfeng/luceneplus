@@ -55,6 +55,10 @@ namespace {
             return "DOUBLE";
         case SortFieldType::kSortedSet:
             return "STRING";
+        case SortFieldType::kCustom:
+            // A custom sort field computes its values per search, so it has no
+            // name in the segment metadata.
+            return "CUSTOM";
     }
     return "SCORE";
 }
@@ -92,6 +96,8 @@ namespace {
 /// read and dropped.
 [[nodiscard]] VoidResult skip_missing_value(SortFieldType type, DataInput &input) {
     switch (type) {
+        case SortFieldType::kCustom:
+            return err(LuceneError::illegal_argument("a custom sort field has no serialized form"));
         case SortFieldType::kString:
         case SortFieldType::kInt:
         case SortFieldType::kFloat: {
@@ -151,6 +157,8 @@ namespace {
 
 Result<std::string_view> sort_field_provider_name(const SortField &field) {
     switch (field.type()) {
+        case SortFieldType::kCustom:
+            return err(LuceneError::illegal_argument("a custom sort field cannot be written to the segment metadata"));
         case SortFieldType::kSortedNumeric:
         case SortFieldType::kSortedNumericDouble:
             return SORTED_NUMERIC_SORT_FIELD_PROVIDER;
@@ -251,6 +259,8 @@ Result<SortField> read_sort_field(std::string_view provider_name, DataInput &inp
         // collapses them into "integral" and "floating point" sorts.
         SortFieldType multi_type = SortFieldType::kSortedNumeric;
         switch (type.value()) {
+            case SortFieldType::kCustom:
+                return err(LuceneError::illegal_argument("a custom sort field has no serialized form"));
             case SortFieldType::kInt:
             case SortFieldType::kLong:
                 multi_type = SortFieldType::kSortedNumeric;

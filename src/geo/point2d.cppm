@@ -34,8 +34,8 @@ namespace lucene {
 ///
 /// **Deviation:** the reference implementation also has `create_from_point` /
 /// `create_from_xy_point`, which need the lat/lon and XY point *geometries*; the
-/// port keeps those conversions in `:lat_lon_geometry` and `:xy_geometry` so this
-/// module has no dependency on them.
+/// port keeps those conversions in `:geo_point` (the shape module) so this module
+/// has no dependency on them.
 export class Point2D final : public Component2D {
 public:
     Point2D(double x, double y) : x_(x), y_(y) {}

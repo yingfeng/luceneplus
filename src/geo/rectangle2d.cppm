@@ -32,9 +32,8 @@ namespace lucene {
 ///
 /// **Deviation:** the reference implementation's `create_from_rectangle` /
 /// `create_from_xy_rectangle` envelope the quantized shape in a component tree
-/// when the box crosses the dateline; that bridging lives in
-/// `:lat_lon_geometry` / `:xy_geometry` so this module stays free of the shape
-/// classes.
+/// when the box crosses the dateline; that bridging lives in `:geo_rectangle`
+/// (the shape module), so this module stays free of the shape classes.
 export class Rectangle2D final : public Component2D {
 public:
     Rectangle2D(double min_x, double max_x, double min_y, double max_y)

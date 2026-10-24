@@ -26,14 +26,17 @@ import :leaf_reader;
 
 namespace lucene {
 
+export class FieldComparator;
+
 /// How the values of a sort field are read and compared.
 ///
 /// Port of `SortFieldType` (`core/search/sort_field.rs`).
 ///
 /// **Deviation:** the reference implementation's `StringVal`/`IntVal`/... types,
 /// which sort on doc values that are not also indexed as points, and the
-/// `Custom`/`Rewritable` types are not ported: every value is read from doc
-/// values, which is what the port's segments write.
+/// `Rewritable` type are not ported.  The `Custom` type is ported as a hook: a
+/// custom sort field carries its own comparator factory, which is what the
+/// distance sorts of the geo fields need.
 export enum class SortFieldType : int32_t {
     /// Sort by relevance; higher scores come first.
     kScore = 0,
@@ -58,6 +61,9 @@ export enum class SortFieldType : int32_t {
     /// Sort by a term in `SortedSetDocValues`, taking the
     /// [`selector`](SortField::selector) value.
     kSortedSet = 9,
+    /// Sort by a comparator the field brings along, via
+    /// [`SortField::with_custom`].
+    kCustom = 10,
 };
 
 /// Which value of a multi-valued field a sort uses.
@@ -99,6 +105,31 @@ public:
 
     /// Sorts by ascending document number.
     [[nodiscard]] static Result<SortField> doc();
+
+    /// A sort field that brings its own comparator, for the sorts whose values
+    /// are computed rather than read from a field (the distance sorts, for
+    /// instance).
+    ///
+    /// `display` is what [`to_string`] returns; `factory` builds a comparator
+    /// over `num_hits` slots.
+    ///
+    /// **Deviation:** the reference implementation makes the custom sort field a
+    /// separate type that wraps a `SortField`; the port keeps one type and stores
+    /// the factory in it, because the search layer consumes `SortField`s and not
+    /// their subclasses.
+    using CustomComparatorFactory = std::function<std::unique_ptr<FieldComparator>(int32_t num_hits)>;
+
+    [[nodiscard]] static Result<SortField> with_custom(std::optional<std::string> field, std::string display,
+                                                      CustomComparatorFactory factory);
+
+    /// Whether the field brings its own comparator.
+    [[nodiscard]] bool is_custom() const noexcept { return type_ == SortFieldType::kCustom; }
+    /// The text a custom field prints; empty for the other types.
+    [[nodiscard]] const std::string &custom_display() const noexcept { return custom_display_; }
+    /// The comparator factory of a custom field; null for the other types.
+    [[nodiscard]] const CustomComparatorFactory &custom_comparator_factory() const noexcept {
+        return custom_factory_;
+    }
 
     /// The field the sort reads, absent for the score and doc types.
     [[nodiscard]] const std::optional<std::string> &field() const noexcept { return field_; }
@@ -145,6 +176,10 @@ private:
     SortFieldType type_{SortFieldType::kScore};
     bool reverse_{false};
     SortFieldSelector selector_{SortFieldSelector::kMin};
+    /// What a [`kCustom`](SortFieldType::kCustom) field prints.
+    std::string custom_display_;
+    /// The comparator of a [`kCustom`](SortFieldType::kCustom) field.
+    CustomComparatorFactory custom_factory_;
 };
 
 /// The sort criteria of a search: the fields are compared in order, and the

@@ -52,6 +52,8 @@ std::string_view type_name(SortFieldType type) {
             return "sorted_numeric_double";
         case SortFieldType::kSortedSet:
             return "sorted_set";
+        case SortFieldType::kCustom:
+            return "custom";
     }
     return "unknown";
 }
@@ -94,7 +96,22 @@ Result<SortField> SortField::score() { return with_reverse(std::nullopt, SortFie
 
 Result<SortField> SortField::doc() { return with_reverse(std::nullopt, SortFieldType::kDoc, false); }
 
+Result<SortField> SortField::with_custom(std::optional<std::string> field, std::string display,
+                                        CustomComparatorFactory factory) {
+    if (!factory) {
+        return err(LuceneError::illegal_argument("a custom sort field needs a comparator factory"));
+    }
+    SortField sort_field(std::move(field), SortFieldType::kCustom, false, SortFieldSelector::kMin);
+    sort_field.custom_display_ = std::move(display);
+    sort_field.custom_factory_ = std::move(factory);
+    return sort_field;
+}
+
 Result<std::unique_ptr<IndexSorter>> SortField::index_sorter() const {
+    if (type_ == SortFieldType::kCustom) {
+        return err(LuceneError::illegal_argument(
+                "a custom sort field cannot drive an index sort: its values are computed per search"));
+    }
     if (needs_scores()) {
         return err(LuceneError::illegal_argument(
                 "Cannot sort an index with a Sort that refers to the relevance score"));
@@ -109,6 +126,9 @@ Result<std::unique_ptr<IndexSorter>> SortField::index_sorter() const {
 
     std::unique_ptr<IndexSorter> sorter;
     switch (type_) {
+        case SortFieldType::kCustom:
+            // A custom sort field computes its values per search.
+            return err(LuceneError::illegal_argument("a custom sort field cannot drive an index sort"));
         case SortFieldType::kInt: {
             auto created = IntIndexSorter::create(field_.value(), std::nullopt, reverse_);
             if (!created.has_value()) {
@@ -160,6 +180,9 @@ Result<std::unique_ptr<IndexSorter>> SortField::index_sorter() const {
 }
 
 Result<std::string> SortField::to_string() const {
+    if (type_ == SortFieldType::kCustom) {
+        return custom_display_;
+    }
     std::string buffer;
     if (type_ == SortFieldType::kScore) {
         buffer = "<score>";

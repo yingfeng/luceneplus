@@ -37,7 +37,7 @@ namespace lucene {
 /// **Deviation:** the reference implementation's `create_from_line` /
 /// `create_from_xy_line` take the lat/lon and XY line *geometries*, which would
 /// make this module depend on them; the port takes the raw vertices and keeps the
-/// bridging in `:lat_lon_geometry` / `:xy_geometry`.
+/// bridging in `:geo_line` (the shape module).
 export class Line2D final : public Component2D {
 public:
     /// A line through the given vertices; at least two points are required and
