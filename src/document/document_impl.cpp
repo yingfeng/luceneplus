@@ -45,6 +45,11 @@ void rebuild_index(std::vector<std::unique_ptr<IndexableField>> &fields,
 
 } // namespace
 
+std::vector<std::unique_ptr<IndexableField>> Document::take_fields() {
+    index_.clear();
+    return std::move(fields_);
+}
+
 void Document::remove_field(std::string_view name) {
     auto range = index_.equal_range(name);
     if (range.first == range.second) {

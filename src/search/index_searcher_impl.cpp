@@ -24,6 +24,7 @@ import :bm25_similarity;
 import :bulk_scorer;
 import :collector;
 import :collector_manager;
+import :constant_score_query;
 import :collection_statistics;
 import :doc_id_set_iterator;
 import :error;
@@ -53,6 +54,22 @@ import std;
 namespace lucene {
 
 namespace {
+
+/// Reduces through a [`CollectorManager`] and keeps the single result a plain
+/// manager produces.
+///
+/// A manager may answer several results (see `MultiCollectorManager`); a caller
+/// that asked for one collector manager gets the first.
+Result<TopDocs> reduce_single(const CollectorManager &manager, std::vector<std::unique_ptr<Collector>> collectors) {
+    auto results = manager.reduce(std::move(collectors));
+    if (!results.has_value()) {
+        return std::unexpected(std::move(results.error()));
+    }
+    if (results.value().empty()) {
+        return err(LuceneError::illegal_state("the collector manager produced no result"));
+    }
+    return std::move(results.value().front());
+}
 
 /// The default similarity, BM25 with Lucene's default parameters.
 std::shared_ptr<Similarity> make_default_similarity() {
@@ -165,8 +182,69 @@ Result<std::shared_ptr<Query>> IndexSearcher::rewrite(const Query &query) const 
     }
 }
 
+Result<std::shared_ptr<Query>> IndexSearcher::rewrite_with_needs_scores(const Query &query,
+                                                                        bool needs_scores) const {
+    if (needs_scores) {
+        return rewrite(query);
+    }
+    // A non-owning alias: the wrapper never owns the caller's query.
+    auto wrapper = std::make_shared<ConstantScoreQuery>(std::shared_ptr<Query>(const_cast<Query *>(&query), [](Query *) {}));
+    auto rewritten = rewrite(*wrapper);
+    if (!rewritten.has_value()) {
+        return std::unexpected(std::move(rewritten.error()));
+    }
+    // When the wrapper reports "no further rewrite", the wrapper itself is the
+    // final form; answering null would make the caller drop it.
+    if (rewritten.value() == nullptr) {
+        return std::shared_ptr<Query>(std::move(wrapper));
+    }
+    return rewritten;
+}
+
 Result<TopDocs> IndexSearcher::search(const Query &query, int32_t n) const {
     return search_after_score(nullptr, query, n);
+}
+
+Result<Explanation> IndexSearcher::explain(const Query &query, int32_t doc) const {
+    auto max_doc = reader_->max_doc();
+    if (!max_doc.has_value()) {
+        return std::unexpected(std::move(max_doc.error()));
+    }
+    if (doc < 0 || doc >= max_doc.value()) {
+        return err(LuceneError::illegal_argument("doc " + std::to_string(doc) + " is out of bounds (maxDoc " +
+                                                 std::to_string(max_doc.value()) + ")"));
+    }
+
+    auto rewritten = rewrite(query);
+    if (!rewritten.has_value()) {
+        return std::unexpected(std::move(rewritten.error()));
+    }
+    const Query *effective = rewritten.value() != nullptr ? rewritten.value().get() : &query;
+
+    auto weight = create_weight(*effective, ScoreMode::Complete, 1.0F);
+    if (!weight.has_value()) {
+        return std::unexpected(std::move(weight.error()));
+    }
+
+    auto leaves = reader_->leaves();
+    if (!leaves.has_value()) {
+        return std::unexpected(std::move(leaves.error()));
+    }
+    for (const LeafReaderContext &leaf : leaves.value()) {
+        auto leaf_max_doc = leaf.reader()->max_doc();
+        if (!leaf_max_doc.has_value()) {
+            return std::unexpected(std::move(leaf_max_doc.error()));
+        }
+        if (doc < leaf.doc_base() || doc >= leaf.doc_base() + leaf_max_doc.value()) {
+            continue;
+        }
+        return weight.value()->explain(leaf, doc - leaf.doc_base(), *this);
+    }
+    return err(LuceneError::illegal_argument("no leaf holds doc " + std::to_string(doc)));
+}
+
+Result<Explanation> IndexSearcher::explain(const Query &query, const ScoreDoc &score_doc) const {
+    return explain(query, score_doc.doc);
 }
 
 Result<int32_t> IndexSearcher::count(const Query &query) const {
@@ -240,7 +318,7 @@ Result<TopDocs> IndexSearcher::search_with_collector_manager(const Query &query,
     // here: the weight borrows it.
     std::shared_ptr<Query> rewritten;
     const Query *effective = &query;
-    auto rewrite_result = rewrite(query);
+    auto rewrite_result = rewrite_with_needs_scores(query, score_mode_needs_scores(score_mode));
     if (!rewrite_result.has_value()) {
         return std::unexpected(std::move(rewrite_result.error()));
     }
@@ -265,7 +343,7 @@ Result<TopDocs> IndexSearcher::search_with_collector_manager(const Query &query,
         // collector without ever calling `search_leaf` (the reference implementation's
         // `leaf_slices.is_empty()` branch).
         collectors.push_back(std::move(first.value()));
-        return manager.reduce(std::move(collectors));
+        return reduce_single(manager, std::move(collectors));
     }
     collectors.reserve(leaves.value().size());
     collectors.push_back(std::move(first.value()));
@@ -288,7 +366,7 @@ Result<TopDocs> IndexSearcher::search_with_collector_manager(const Query &query,
             return std::unexpected(std::move(collected.error()));
         }
     }
-    return manager.reduce(std::move(collectors));
+    return reduce_single(manager, std::move(collectors));
 }
 
 VoidResult IndexSearcher::search_with_collector(const Query &query, Collector &collector) const {
@@ -296,7 +374,7 @@ VoidResult IndexSearcher::search_with_collector(const Query &query, Collector &c
 
     std::shared_ptr<Query> rewritten;
     const Query *effective = &query;
-    auto rewrite_result = rewrite(query);
+    auto rewrite_result = rewrite_with_needs_scores(query, score_mode_needs_scores(score_mode));
     if (!rewrite_result.has_value()) {
         return std::unexpected(std::move(rewrite_result.error()));
     }

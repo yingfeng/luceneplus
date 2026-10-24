@@ -51,6 +51,11 @@ public:
     [[nodiscard]] std::vector<const IndexableField *> get_fields_with_name(std::string_view name) const;
     /// All fields, in insertion order.
     [[nodiscard]] std::vector<const IndexableField *> get_fields() const;
+
+    /// Moves every field out, leaving the document empty.
+    ///
+    /// Used when documents are concatenated into one (`ParallelStoredFields`).
+    [[nodiscard]] std::vector<std::unique_ptr<IndexableField>> take_fields();
     [[nodiscard]] size_t field_count() const noexcept { return fields_.size(); }
     [[nodiscard]] bool empty() const noexcept { return fields_.empty(); }
 

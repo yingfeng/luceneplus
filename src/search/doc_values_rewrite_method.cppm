@@ -47,8 +47,9 @@ namespace lucene {
 ///  * the "singleton" fast path (a single-valued `SortedDocValues` probed with
 ///    one `ord` per document) is not ported; the port always walks the sorted set
 ///    ordinals, which gives the same documents;
-///  * the doc values skipper shortcut is not ported, because
-///    `DocValuesRangeIterator` is not ported yet;
+///  * the doc values skipper shortcut is not ported: the port walks the whole
+///    sorted set instead of skipping blocks through
+///    [`DocValuesRangeIterator`](:doc_values_range_iterator);
 ///  * `Weight::matches` is not ported, for the same reason as elsewhere.
 export class MultiTermQueryDocValuesWrapper final : public Query {
 public:

@@ -35,17 +35,20 @@ namespace lucene {
 /// [`IndexCommit::delete_commit`] on it.
 ///
 /// **Deviation:** the reference implementation parameterises the policy over the
-/// commit type; the port always passes the [`IndexCommit`] interface, which is
-/// what the policies use anyway.
+/// concrete commit type; the port always passes the [`IndexCommit`] interface,
+/// which is what the policies use anyway.  The commits are handed over as owning
+/// pointers (the reference implementation's `&[Arc<CommitPoint>]`), so a policy may
+/// keep one: [`SnapshotDeletionPolicy`](:snapshot_deletion_policy) does exactly
+/// that.
 export class IndexDeletionPolicy {
 public:
     virtual ~IndexDeletionPolicy() = default;
 
     /// Called once, when the writer starts.
-    [[nodiscard]] virtual VoidResult on_init(std::span<IndexCommit *const> commits) = 0;
+    [[nodiscard]] virtual VoidResult on_init(std::span<const std::shared_ptr<IndexCommit>> commits) = 0;
 
     /// Called after every commit.
-    [[nodiscard]] virtual VoidResult on_commit(std::span<IndexCommit *const> commits) = 0;
+    [[nodiscard]] virtual VoidResult on_commit(std::span<const std::shared_ptr<IndexCommit>> commits) = 0;
 
     /// The name of the policy, for diagnostics.
     [[nodiscard]] virtual std::string to_string() const = 0;
@@ -56,8 +59,8 @@ public:
 /// Port of `NoDeletionPolicy` (`core/index/no_deletion_policy.rs`).
 export class NoDeletionPolicy final : public IndexDeletionPolicy {
 public:
-    [[nodiscard]] VoidResult on_init(std::span<IndexCommit *const> /*commits*/) override { return {}; }
-    [[nodiscard]] VoidResult on_commit(std::span<IndexCommit *const> /*commits*/) override { return {}; }
+    [[nodiscard]] VoidResult on_init(std::span<const std::shared_ptr<IndexCommit>> /*commits*/) override { return {}; }
+    [[nodiscard]] VoidResult on_commit(std::span<const std::shared_ptr<IndexCommit>> /*commits*/) override { return {}; }
     [[nodiscard]] std::string to_string() const override { return "NoDeletionPolicy"; }
 };
 
@@ -68,12 +71,12 @@ public:
 export class KeepOnlyLastCommitDeletionPolicy final : public IndexDeletionPolicy {
 public:
     /// Deletes every commit but the last one.
-    [[nodiscard]] VoidResult on_init(std::span<IndexCommit *const> commits) override {
+    [[nodiscard]] VoidResult on_init(std::span<const std::shared_ptr<IndexCommit>> commits) override {
         return on_commit(commits);
     }
 
     /// Deletes every commit but the last one.
-    [[nodiscard]] VoidResult on_commit(std::span<IndexCommit *const> commits) override;
+    [[nodiscard]] VoidResult on_commit(std::span<const std::shared_ptr<IndexCommit>> commits) override;
 
     [[nodiscard]] std::string to_string() const override { return "KeepOnlyLastCommitDeletionPolicy"; }
 };

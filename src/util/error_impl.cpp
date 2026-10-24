@@ -140,6 +140,25 @@ void LuceneError::add_suppressed(const LuceneError &error) {
     suppressed_ = tail;
 }
 
+bool LuceneError::is_io_error() const noexcept {
+    switch (kind_) {
+        case ErrorKind::kCorruptIndex:
+        case ErrorKind::kEof:
+        case ErrorKind::kIndexFormatTooNew:
+        case ErrorKind::kIndexFormatTooOld:
+        case ErrorKind::kIndexNotFound:
+        case ErrorKind::kIo:
+        case ErrorKind::kUncheckedIo:
+        case ErrorKind::kLockAlreadyHeld:
+        case ErrorKind::kLockHeldByOther:
+        case ErrorKind::kLockObtainFailed:
+        case ErrorKind::kLockReleaseFailed:
+        case ErrorKind::kMergeAborted:
+        case ErrorKind::kNotSuchFile: return true;
+        default: return false;
+    }
+}
+
 std::string to_string(const LuceneError &error) { return error.to_string(); }
 
 } // namespace lucene

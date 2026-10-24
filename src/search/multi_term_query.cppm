@@ -39,11 +39,12 @@ namespace lucene {
 /// cannot be plain enumerators.
 ///
 /// **Deviations:**
-///  * `DocValuesRewriteMethod` is not ported yet;
 ///  * `kConstantScore` and `kConstantScoreBlended` share one implementation: the
 ///    reference implementation's blended variant only differs in how it splits
 ///    the work between a boolean query and a bit set, and both assign every
-///    matching document the query's boost.
+///    matching document the query's boost;
+///  * [`kDocValues`](Kind::kDocValues) goes through
+///    [`MultiTermQueryDocValuesWrapper`](lucene_core:doc_values_rewrite_method).
 export class MultiTermRewriteMethod {
 public:
     /// The rewrite the value stands for.

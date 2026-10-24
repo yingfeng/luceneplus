@@ -25,6 +25,7 @@ import :document;
 import :error;
 import :index_writer_config;
 import :segment_infos;
+import :standard_directory_reader;
 import :term;
 
 namespace lucene {
@@ -53,7 +54,11 @@ namespace lucene {
 ///    segment the term matches (the reference implementation applies them incrementally to the DWPTs
 ///    through its delete queue), and `delete_all` drops the segments;
 ///  * no `updateDocValues`, no soft deletes, no commit data, no listener, and
-///    `rollback` simply removes the segments written since the last commit.
+///    `rollback` simply removes the segments written since the last commit;
+///  * [`get_reader`] flushes the buffered documents and applies the buffered
+///    deletes before it opens its readers, and it reopens every segment instead of
+///    reusing pooled readers (the reference implementation's `ReaderPool`), so it
+///    is correct but not cheap.
 export class IndexWriter {
 public:
     /// Opens (or creates) the index in `directory`.
@@ -100,6 +105,26 @@ public:
 
     /// [`commit`] followed by releasing the writer.
     [[nodiscard]] VoidResult close();
+
+    /// A reader over the index as it is right now, without committing.
+    ///
+    /// Port of `IndexWriter::get_reader`, the near-real-time read: the buffered
+    /// documents are flushed, the buffered deletes are applied, and the segments
+    /// the writer currently holds are opened.  The result is a snapshot: writes
+    /// that happen afterwards are not visible through it.
+    [[nodiscard]] Result<std::shared_ptr<DirectoryReader>> get_reader();
+
+    /// [`get_reader`](Self::get_reader) with the expert switches of the reference
+    /// implementation's `open_with_writer_deletes`.
+    ///
+    /// `apply_all_deletes` decides whether the buffered deletes are applied (and
+    /// written to the `.liv` files) before the reader opens; with `false` the
+    /// reader still shows the documents a pending delete targets.  **Deviation:**
+    /// `write_all_deletes` is accepted for compatibility but the port always
+    /// writes the live docs when it applies deletes, because it never carries
+    /// them in heap.
+    [[nodiscard]] Result<std::shared_ptr<DirectoryReader>> get_reader(bool apply_all_deletes,
+                                                                     bool write_all_deletes);
 
     /// Documents visible in the index: committed ones plus the buffered ones,
     /// minus the deletes that are still only buffered.

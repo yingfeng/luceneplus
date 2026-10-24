@@ -57,11 +57,15 @@ public:
 
     [[nodiscard]] Result<std::unique_ptr<Collector>> new_collector() const override;
 
-    [[nodiscard]] Result<TopDocs> reduce(std::vector<std::unique_ptr<Collector>> collectors) const override;
+    [[nodiscard]] Result<std::vector<TopDocs>>
+    reduce(std::vector<std::unique_ptr<Collector>> collectors) const override;
 
     [[nodiscard]] size_t num_hits() const noexcept { return num_hits_; }
 
 private:
+    /// The single result of the collectors; [`reduce`] wraps it in a vector.
+    [[nodiscard]] Result<TopDocs> reduce_one(std::vector<std::unique_ptr<Collector>> collectors) const;
+
     TopScoreDocCollectorManager(size_t num_hits, std::optional<ScoreDoc> after, size_t total_hits_threshold,
                                 std::shared_ptr<MaxScoreAccumulator> min_score_acc, bool check_after);
 

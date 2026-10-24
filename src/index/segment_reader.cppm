@@ -107,6 +107,9 @@ public:
     /// Lucene major version the index was created with.
     [[nodiscard]] int32_t created_version_major() const noexcept { return created_version_major_; }
 
+    /// The metadata of this segment, built from its `SegmentInfo`.
+    [[nodiscard]] const LeafMetaData &leaf_meta_data() const override { return leaf_meta_data_; }
+
 private:
     SegmentReader() = default;
 
@@ -116,6 +119,7 @@ private:
     /// Live documents; empty when `has_deletions()` is false.
     std::optional<FixedBitSet> live_docs_;
     std::shared_ptr<SegmentCoreReaders> core_;
+    LeafMetaData leaf_meta_data_{LeafMetaData::unknown()};
     std::shared_ptr<const FieldInfos> field_infos_;
 };
 

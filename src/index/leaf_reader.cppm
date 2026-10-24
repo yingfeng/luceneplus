@@ -26,6 +26,7 @@ import :doc_values_skipper;
 import :error;
 import :field_infos;
 import :index_reader;
+import :leaf_metadata;
 import :leaf_reader_context;
 import :numeric_doc_values;
 import :point_values;
@@ -120,6 +121,13 @@ public:
     [[nodiscard]] Result<std::span<const LeafReaderContext>> leaves() const override;
 
     [[nodiscard]] const Identity &identity() const override { return identity_; }
+
+    /// The metadata of the segment behind this reader.
+    ///
+    /// **Deviation:** the reference implementation requires every leaf to expose
+    /// this; readers that do not track it (composites, wrappers, test doubles)
+    /// answer [`LeafMetaData::unknown`] instead of failing.
+    [[nodiscard]] virtual const LeafMetaData &leaf_meta_data() const { return LeafMetaData::unknown(); }
 
     /// `LeafReader(<class name> max_doc=... num_docs=...)`, for diagnostics.
     [[nodiscard]] virtual std::string to_string() const;

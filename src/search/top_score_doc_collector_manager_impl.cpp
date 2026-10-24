@@ -85,7 +85,19 @@ Result<std::unique_ptr<Collector>> TopScoreDocCollectorManager::new_collector() 
     return std::unique_ptr<Collector>(std::move(collector.value()));
 }
 
-Result<TopDocs> TopScoreDocCollectorManager::reduce(std::vector<std::unique_ptr<Collector>> collectors) const {
+Result<std::vector<TopDocs>>
+TopScoreDocCollectorManager::reduce(std::vector<std::unique_ptr<Collector>> collectors) const {
+    auto single = reduce_one(std::move(collectors));
+    if (!single.has_value()) {
+        return std::unexpected(std::move(single.error()));
+    }
+    std::vector<TopDocs> results;
+    results.push_back(std::move(single.value()));
+    return results;
+}
+
+Result<TopDocs> TopScoreDocCollectorManager::reduce_one(
+        std::vector<std::unique_ptr<Collector>> collectors) const {
     if (collectors.size() == 1) {
         auto *only = dynamic_cast<TopScoreDocCollector *>(collectors.front().get());
         if (only == nullptr) {

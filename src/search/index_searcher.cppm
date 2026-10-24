@@ -59,9 +59,9 @@ export class QueryCachingPolicy;
 ///  * searching is serial: slices, partitions and the task executor are not
 ///    ported, so one collector is created per leaf and the leaves are visited in
 ///    order;
-///  * `count` and `explain` are not ported yet, and neither are timeouts or the
-///    `IndexSearcherHook`; the query cache is only consulted when a cache and a
-///    policy are set, and only for searches that do not need scores;
+///  * timeouts and the `IndexSearcherHook` are not ported; the query cache is only
+///    consulted when a cache and a policy are set, and only for searches that do
+///    not need scores;
 ///  * the reader is a `std::shared_ptr` instead of a ref-counted
 ///    `IndexReaderContext` tree.
 export class IndexSearcher {
@@ -96,6 +96,17 @@ public:
     /// documents are cached per leaf.
     [[nodiscard]] Result<std::unique_ptr<Weight>> create_weight(const Query &query, ScoreMode score_mode,
                                                                 float boost) const;
+
+    /// Why `doc` scores what it scores for `query`.
+    ///
+    /// Port of `IndexSearcher::explain`: the query is rewritten, its weight is
+    /// built, and the leaf that holds `doc` explains the (leaf-relative) document.
+    /// A document outside the index fails with `illegal_argument`; a document that
+    /// does not match answers a non-matching [`Explanation`].
+    [[nodiscard]] Result<Explanation> explain(const Query &query, int32_t doc) const;
+
+    /// [`explain`](Self::explain) for a hit, which carries the global document id.
+    [[nodiscard]] Result<Explanation> explain(const Query &query, const ScoreDoc &score_doc) const;
 
     /// A query cache, or a null pointer (no caching).
     [[nodiscard]] const std::shared_ptr<QueryCache> &query_cache() const noexcept { return query_cache_; }
@@ -167,11 +178,17 @@ public:
 
     /// Rewrites `query` until it reaches its final form.
     ///
-    /// **Deviation:** the reference implementation's `rewrite_with_needs_scores` wraps the query in a
-    /// `ConstantScoreQuery` when scores are not needed, to take advantage of its
-    /// extra rewrite rules; that query is not ported, so this always rewrites
-    /// directly.
+    /// Rewrites `query` until it reaches its final form.
     [[nodiscard]] Result<std::shared_ptr<Query>> rewrite(const Query &query) const;
+
+    /// Rewrites `query`, first wrapping it in a
+    /// [`ConstantScoreQuery`](:constant_score_query) when the caller does not need
+    /// scores, so that its extra rewrite rules apply (a scoreless `PrefixQuery`
+    /// then reaches the doc-values rewrite, for instance).
+    ///
+    /// Port of `IndexSearcher::rewrite_with_needs_scores`.
+    [[nodiscard]] Result<std::shared_ptr<Query>> rewrite_with_needs_scores(const Query &query,
+                                                                          bool needs_scores) const;
 
 private:
     /// Collects the leaf at `ord`, restricted to the document range

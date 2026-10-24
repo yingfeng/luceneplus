@@ -46,6 +46,16 @@ Result<std::shared_ptr<SegmentReader>> SegmentReader::open(Directory &dir, const
     }
     reader->core_ = std::move(core.value());
     reader->field_infos_ = reader->core_->core_field_infos();
+    // The sort order is recorded per segment since index sorting is ported.
+    std::shared_ptr<const Sort> sort;
+    if (si.info.sort.has_value()) {
+        sort = std::make_shared<const Sort>(si.info.sort.value());
+    }
+    if (auto meta = LeafMetaData::create(created_version_major, si.info.min_version, std::move(sort),
+                                        si.info.has_blocks);
+        meta.has_value()) {
+        reader->leaf_meta_data_ = std::move(meta.value());
+    }
     reader->num_docs_ = si.doc_count();
 
     // Live docs are stored with the regular directory, never inside the

@@ -131,6 +131,18 @@ public:
     [[nodiscard]] bool is_eof() const noexcept { return kind_ == ErrorKind::kEof; }
     [[nodiscard]] bool is_io() const noexcept { return kind_ == ErrorKind::kIo; }
 
+    /// Whether this is an I/O-related failure, in the reference implementation's
+    /// broad sense: a corrupt or unreadable index, a missing file or a lock
+    /// problem.  Callers that report the first failure of a batch of closes use
+    /// it to distinguish "the storage complained" from "the caller misused the
+    /// API", which is returned immediately.
+    [[nodiscard]] bool is_io_error() const noexcept;
+
+    /// Whether this is a state failure, including "already closed".
+    [[nodiscard]] bool is_illegal_state_error() const noexcept {
+        return kind_ == ErrorKind::kIllegalState || kind_ == ErrorKind::kAlreadyClosed;
+    }
+
 private:
     ErrorKind kind_{ErrorKind::kNone};
     std::string message_{};

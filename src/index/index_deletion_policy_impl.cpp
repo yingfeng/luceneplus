@@ -27,7 +27,7 @@ import :types;
 
 namespace lucene {
 
-VoidResult KeepOnlyLastCommitDeletionPolicy::on_commit(std::span<IndexCommit *const> commits) {
+VoidResult KeepOnlyLastCommitDeletionPolicy::on_commit(std::span<const std::shared_ptr<IndexCommit>> commits) {
     if (commits.empty()) {
         return {};
     }

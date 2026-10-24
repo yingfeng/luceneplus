@@ -73,45 +73,45 @@ private:
 
 TEST(IndexDeletionPolicyTest, NoPolicyDeletesNothing) {
     ByteBuffersDirectory dir;
-    FakeIndexCommit first(1, "segments_1", dir);
-    FakeIndexCommit second(2, "segments_2", dir);
-    std::vector<IndexCommit *> commits{&first, &second};
+    auto first = std::make_shared<FakeIndexCommit>(1, "segments_1", dir);
+    auto second = std::make_shared<FakeIndexCommit>(2, "segments_2", dir);
+    std::vector<std::shared_ptr<IndexCommit>> commits{first, second};
 
     NoDeletionPolicy policy;
     EXPECT_TRUE(policy.on_init(commits).has_value());
     EXPECT_TRUE(policy.on_commit(commits).has_value());
-    EXPECT_FALSE(first.is_deleted());
-    EXPECT_FALSE(second.is_deleted());
+    EXPECT_FALSE(first->is_deleted());
+    EXPECT_FALSE(second->is_deleted());
     EXPECT_EQ(policy.to_string(), "NoDeletionPolicy");
 }
 
 TEST(IndexDeletionPolicyTest, KeepOnlyLastDeletesTheOlderCommits) {
     ByteBuffersDirectory dir;
-    FakeIndexCommit first(1, "segments_1", dir);
-    FakeIndexCommit second(2, "segments_2", dir);
-    FakeIndexCommit third(3, "segments_3", dir);
-    std::vector<IndexCommit *> commits{&first, &second, &third};
+    auto first = std::make_shared<FakeIndexCommit>(1, "segments_1", dir);
+    auto second = std::make_shared<FakeIndexCommit>(2, "segments_2", dir);
+    auto third = std::make_shared<FakeIndexCommit>(3, "segments_3", dir);
+    std::vector<std::shared_ptr<IndexCommit>> commits{first, second, third};
 
     KeepOnlyLastCommitDeletionPolicy policy;
     ASSERT_TRUE(policy.on_commit(commits).has_value());
 
-    EXPECT_TRUE(first.is_deleted());
-    EXPECT_TRUE(second.is_deleted());
-    EXPECT_FALSE(third.is_deleted());
-    EXPECT_EQ(first.delete_calls(), 1);
+    EXPECT_TRUE(first->is_deleted());
+    EXPECT_TRUE(second->is_deleted());
+    EXPECT_FALSE(third->is_deleted());
+    EXPECT_EQ(first->delete_calls(), 1);
     EXPECT_EQ(policy.to_string(), "KeepOnlyLastCommitDeletionPolicy");
 }
 
 TEST(IndexDeletionPolicyTest, KeepOnlyLastBehavesTheSameOnInit) {
     ByteBuffersDirectory dir;
-    FakeIndexCommit only(1, "segments_1", dir);
-    FakeIndexCommit latest(2, "segments_2", dir);
-    std::vector<IndexCommit *> commits{&only, &latest};
+    auto only = std::make_shared<FakeIndexCommit>(1, "segments_1", dir);
+    auto latest = std::make_shared<FakeIndexCommit>(2, "segments_2", dir);
+    std::vector<std::shared_ptr<IndexCommit>> commits{only, latest};
 
     KeepOnlyLastCommitDeletionPolicy policy;
     ASSERT_TRUE(policy.on_init(commits).has_value());
-    EXPECT_TRUE(only.is_deleted());
-    EXPECT_FALSE(latest.is_deleted());
+    EXPECT_TRUE(only->is_deleted());
+    EXPECT_FALSE(latest->is_deleted());
 
     // An empty list (a brand new index) is fine.
     EXPECT_TRUE(policy.on_init({}).has_value());
@@ -120,7 +120,7 @@ TEST(IndexDeletionPolicyTest, KeepOnlyLastBehavesTheSameOnInit) {
 
 TEST(IndexDeletionPolicyTest, KeepOnlyLastRejectsNullCommits) {
     KeepOnlyLastCommitDeletionPolicy policy;
-    std::vector<IndexCommit *> commits{nullptr, nullptr};
+    std::vector<std::shared_ptr<IndexCommit>> commits{nullptr, nullptr};
     auto committed = policy.on_commit(commits);
     ASSERT_FALSE(committed.has_value());
     EXPECT_EQ(committed.error().kind(), ErrorKind::kIllegalArgument);

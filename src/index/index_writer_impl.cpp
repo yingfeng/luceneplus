@@ -36,8 +36,10 @@ import :live_docs_format;
 import :merge_policy;
 import :merge_scheduler;
 import :merge_trigger;
+import :reader_pool;
 import :segment_commit_info;
 import :segment_infos;
+import :standard_directory_reader;
 import :segment_merger;
 import :segment_reader;
 import :sort_field;
@@ -77,7 +79,9 @@ std::set<std::string> files_of(const SegmentInfos &infos) {
 
 struct IndexWriter::Impl : MergeSource {
     Impl(Directory &directory, IndexWriterConfig config)
-        : directory_(directory), config_(std::move(config)) {}
+        : directory_(directory),
+          reader_pool_(std::make_unique<ReaderPool>(directory)),
+          config_(std::move(config)) {}
 
     /// The merge context the policy sees: deletes come from the commit infos, the
     /// segments being merged are the queued ones, and sizes are measured against
@@ -585,6 +589,10 @@ struct IndexWriter::Impl : MergeSource {
     }
 
     Directory &directory_;
+
+    /// The readers handed out by `get_reader`, so consecutive reads reuse them.
+
+    std::unique_ptr<ReaderPool> reader_pool_;
     IndexWriterConfig config_;
     SegmentInfos infos_;
     SegmentInfos committed_infos_;
@@ -744,6 +752,43 @@ VoidResult IndexWriter::close() {
     }
     impl_->open_ = false;
     return {};
+}
+
+Result<std::shared_ptr<DirectoryReader>> IndexWriter::get_reader() { return get_reader(true, false); }
+
+Result<std::shared_ptr<DirectoryReader>> IndexWriter::get_reader(bool apply_all_deletes, bool write_all_deletes) {
+    (void)write_all_deletes;
+    if (!impl_->open_) {
+        return err(LuceneError::already_closed("this IndexWriter is closed"));
+    }
+    // The buffered documents have to become a segment and the buffered deletes
+    // have to reach the `.liv` files before a reader can see them.
+    if (auto flushed = impl_->flush(); !flushed.has_value()) {
+        return std::unexpected(std::move(flushed.error()));
+    }
+    if (apply_all_deletes) {
+        if (auto applied = impl_->apply_deletes(); !applied.has_value()) {
+            return std::unexpected(std::move(applied.error()));
+        }
+    }
+
+    // Reuse the readers of the previous near-real-time read; the pool reopens the
+    // segments that changed (e.g. the ones a commit or a merge rewrote).
+    // A commit that applied deletions replaces a segment, so drop the readers of
+    // the segments the writer no longer holds.
+    impl_->reader_pool_->retain_only(impl_->infos_);
+
+    std::vector<std::shared_ptr<SegmentReader>> readers;
+    readers.reserve(impl_->infos_.segments.size());
+    for (SegmentCommitInfo &segment : impl_->infos_.segments) {
+        auto reader = impl_->reader_pool_->get(segment, impl_->infos_.index_created_version_major,
+                                               io_context_default());
+        if (!reader.has_value()) {
+            return std::unexpected(std::move(reader.error()));
+        }
+        readers.push_back(std::move(reader.value()));
+    }
+    return DirectoryReader::open_with_readers(impl_->directory_, impl_->infos_, std::move(readers));
 }
 
 Result<int64_t> IndexWriter::num_docs() const {

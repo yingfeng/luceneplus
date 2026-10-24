@@ -34,7 +34,9 @@ namespace lucene {
 /// **Deviation:** the reference implementation's associated types (`C`, `T`) collapse into
 /// `std::unique_ptr<Collector>` / [`TopDocs`]: the port only has collectors that
 /// produce a `TopDocs`, and reduction therefore has to downcast the collectors it
-/// was handed.
+/// was handed.  Because the reference implementation's `MultiCollectorManager`
+/// returns one result *per* wrapped manager, `reduce` answers a vector: a plain
+/// manager returns exactly one element.
 export class CollectorManager {
 public:
     virtual ~CollectorManager() = default;
@@ -42,8 +44,14 @@ public:
     /// A fresh collector.
     [[nodiscard]] virtual Result<std::unique_ptr<Collector>> new_collector() const = 0;
 
-    /// Merges the per-slice results into one.  The collectors are consumed.
-    [[nodiscard]] virtual Result<TopDocs> reduce(std::vector<std::unique_ptr<Collector>> collectors) const = 0;
+    /// Merges the per-slice results.  The collectors are consumed.
+    ///
+    /// A manager that produces a single result returns a one element vector; a
+    /// manager that wraps several others (see
+    /// [`MultiCollectorManager`](:multi_collector_manager)) returns one element per wrapped
+    /// manager, in the order they were given.
+    [[nodiscard]] virtual Result<std::vector<TopDocs>>
+    reduce(std::vector<std::unique_ptr<Collector>> collectors) const = 0;
 };
 
 } // namespace lucene
